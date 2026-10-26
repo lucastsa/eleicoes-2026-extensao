@@ -68,22 +68,21 @@ UF_DEFAULT_BRT_OFFSET: dict[str, int] = {
 
 # Municípios com fuso horário diferente do padrão da sua UF (código TSE de 5 dígitos):
 # - Fernando de Noronha (PE): UTC-2 (+1h em relação a Brasília -> 17h BRT = 18h local)
-# - 13 municípios do Sudoeste do Amazonas (America/Eirunepe): UTC-5 (-2h em relação a Brasília -> 17h BRT = 15h local)
+# - Municípios do oeste do Amazonas (America/Eirunepe): UTC-5 (-2h em relação a Brasília -> 17h BRT = 15h local)
 MUNICIPIO_BRT_OFFSET_OVERRIDE: dict[str, int] = {
-    "24198": +1,  # Fernando de Noronha (PE)
-    "02038": -2,  # Atalaia do Norte (AM)
-    "02054": -2,  # Benjamin Constant (AM)
-    "02070": -2,  # Boca do Acre (AM)
-    "02259": -2,  # Eirunepé (AM)
-    "02275": -2,  # Envira (AM)
-    "02895": -2,  # Guajará (AM)
+    "30015": +1,  # Fernando de Noronha (PE)
+    "02917": -2,  # Amaturá (AM)
+    "02054": -2,  # Atalaia do Norte (AM)
+    "02135": -2,  # Benjamin Constant (AM)
+    "02291": -2,  # Eirunepé (AM)
+    "02313": -2,  # Envira (AM)
+    "02020": -2,  # Guajará (AM)
     "02399": -2,  # Ipixuna (AM)
-    "02410": -2,  # Itamarati (AM)
-    "02470": -2,  # Jutaí (AM)
-    "02496": -2,  # Lábrea (AM)
-    "02690": -2,  # Pauini (AM)
-    "02798": -2,  # São Paulo de Olivença (AM)
-    "02836": -2,  # Tabatinga (AM)
+    "98370": -2,  # Itamarati (AM)
+    "02496": -2,  # Jutaí (AM)
+    "02755": -2,  # São Paulo de Olivença (AM)
+    "98477": -2,  # Tabatinga (AM)
+    "98515": -2,  # Tonantins (AM)
 }
 
 

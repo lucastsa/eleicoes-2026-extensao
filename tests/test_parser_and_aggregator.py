@@ -36,9 +36,9 @@ class TestParserAndAggregator(unittest.TestCase):
         # AM capital Manaus (UTC-4 = BRT-1) -> 16:00:00
         self.assertEqual(get_brt_cutoff_time_str("AM", "02550"), "16:00:00")
         # AM Tabatinga (UTC-5 = BRT-2) -> 15:00:00
-        self.assertEqual(get_brt_cutoff_time_str("AM", "02836"), "15:00:00")
+        self.assertEqual(get_brt_cutoff_time_str("AM", "98477"), "15:00:00")
         # PE Fernando de Noronha (UTC-2 = BRT+1) -> 18:00:00
-        self.assertEqual(get_brt_cutoff_time_str("PE", "24198"), "18:00:00")
+        self.assertEqual(get_brt_cutoff_time_str("PE", "30015"), "18:00:00")
 
     def test_process_logjez_bytes_in_memory(self) -> None:
         # Simula uma seção no Acre (UTC-5: encerramento oficial às 15h locais = 17h BRT)
