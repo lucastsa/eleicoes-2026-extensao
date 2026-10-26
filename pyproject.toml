@@ -1,0 +1,14 @@
+[project]
+name = "br-election-after-17h"
+version = "0.1.0"
+description = "Download e contagem em memória dos votos computados após as 17h no 2º turno das Eleições Gerais do Brasil (TSE)"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx[http2]>=0.27.0",
+    "py7zr>=0.21.0",
+    "duckdb>=1.0.0",
+    "rich>=13.7.0",
+]
+
+[project.scripts]
+br-election = "main:main"
