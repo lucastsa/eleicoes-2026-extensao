@@ -48,6 +48,7 @@ class TestParserAndAggregator(unittest.TestCase):
             "25/10/2026 14:59:59\tINFO\t67305985\tVOTA\tO voto do eleitor foi computado\tCCCC",
             "25/10/2026 15:10:00\tINFO\t67305985\tVOTA\tO voto do eleitor foi computado\tDDDD",
             "25/10/2026 17:05:12\tINFO\t67305985\tVOTA\tO voto do eleitor foi computado\tEEEE",
+            "25/10/2026 17:08:45\tINFO\t67305985\tVOTA\tProcedimento de encerramento confirmado\tEEEE",
             # Voto do 1º turno no mesmo log (deve ser ignorado)
             "04/10/2026 17:30:00\tINFO\t67305985\tVOTA\tO voto do eleitor foi computado\tFFFF",
         ]
@@ -67,6 +68,8 @@ class TestParserAndAggregator(unittest.TestCase):
         self.assertEqual(res.votos_apos_17h_local, 1)
         # 2 votos têm horário >= 15:00:00 no relógio da urna (15:10:00 e 17:05:12 = após 17h BRT)
         self.assertEqual(res.votos_apos_17h_brt, 2)
+        # Horário de fechamento 17:08:45 local no Acre (UTC-5, offset -2) -> 19:08:45 BRT
+        self.assertEqual(res.hora_fechamento_urna_brt, "19:08:45")
 
     def test_duckdb_aggregations(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

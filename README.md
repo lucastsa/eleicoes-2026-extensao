@@ -107,6 +107,22 @@ A coleta e o processamento integral dos logs de urna das **27 Unidades Federativ
 >
 > **Nota sobre a Diferença Residual em relação ao Total do TSE:** Somando os votos contabilizados nos logs do Brasil (`127.697.270`) e do Exterior (`380.229`), chega-se a **128.077.499 votos** em **499.205 seções** (**99,876%** do total oficial de **128.236.074 votos** divulgado pelo TSE). A diferença residual de **158.575 votos** (**0,124%**) **possivelmente** decorre de seções que passaram por substituição física de urna (nas quais o arquivo de log da primeira urna defeituosa não pôde ser recuperado/copiado para a mídia final transmitida) ou de apuração em contingência por cédulas de papel (*Sistema de Apuração — SA*), cujos votos entram normalmente na totalização do Boletim de Urna (`.bu`), mas não produzem registros de votação eletrônica no `logd.dat`.
 
+### Distribuição do Horário de Fechamento das Urnas (`hora_fechamento_urna_brt`)
+
+A re-consulta das **29.885 seções** com votos após as 17h BRT extraiu o timestamp exato do evento `"Procedimento de encerramento confirmado"` (normalizado para o Horário de Brasília e adicionado na coluna `hora_fechamento_urna_brt` de `data/output/votos_apos_17h_secao.csv` e `.parquet`):
+
+| Faixa de Fechamento (BRT) | Urnas / Seções | % Urnas (>17h BRT) | Votos >17h BRT | % Votos (>17h BRT) |
+| :--- | ---: | ---: | ---: | ---: |
+| **`17:00:00` a `17:04:59`** (até 5 min) | 19.047 | 63,73% | 20.333 | 58,94% |
+| **`17:05:00` a `17:14:59`** (5 a 15 min) | 7.123 | 23,83% | 8.375 | 24,28% |
+| **`17:15:00` a `17:59:59`** (15 a 60 min) | 400 | 1,34% | 690 | 2,00% |
+| **`18:00:00` a `18:59:59`** (1h a 2h após) | 302 | 1,01% | 605 | 1,75% |
+| **`19:00:00` ou mais** (teto da prorrogação de 2h) | 3.013 | 10,08% | 4.492 | 13,02% |
+| **TOTAL** | **29.885** | **100,00%** | **34.495** | **100,00%** |
+
+- **87,57% dessas urnas (`26.170` seções)** fecharam nos **primeiros 15 minutos** após as 17h BRT (`28.708` votos, ou `83,22%` do total pós-17h), correspondendo ao escoamento imediato do último eleitor que já votava às 17h00.
+- **10,08% dessas urnas (`3.013` seções)** encerraram a partir das **`19:00:00` BRT** (somando `4.492` votos pós-17h, sobretudo em `RJ` [`1.280`], `SP` [`885`], `BA` [`493`], `PE` [`230`] e `PB` [`90`]), refletindo as seções que mantiveram os trabalhos abertos até o limite das 2 horas da liminar. A última urna entre as seções com votos pós-17h BRT foi encerrada às **`19:21:19` BRT** em Salvador/BA (`Zona 0006, Seção 0320`).
+
 ### Conclusão: Os votos após as 17h BRT poderiam alterar o resultado da eleição?
 
 **Não.** Mesmo sob a premissa hipotética mais extrema — assumindo que **100% dos 34.495 votos computados após as 17h BRT tivessem sido dados ao 1º colocado e migrassem integralmente para o 2º colocado** — o resultado final do pleito não seria alterado:

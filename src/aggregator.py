@@ -33,6 +33,17 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
     con = duckdb.connect(":memory:")
     con.execute(
         f"""
+        CREATE TABLE raw_secoes AS
+        SELECT * FROM read_parquet('{parquet_glob}', union_by_name=true);
+        """
+    )
+    con.execute(
+        """
+        ALTER TABLE raw_secoes ADD COLUMN IF NOT EXISTS hora_fechamento_urna_brt VARCHAR;
+        """
+    )
+    con.execute(
+        """
         CREATE VIEW secoes AS
         SELECT
             sg_uf,
@@ -43,8 +54,9 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
             nr_secao,
             CAST(total_votos AS BIGINT) AS total_votos,
             CAST(votos_apos_17h_local AS BIGINT) AS votos_apos_17h_local,
-            CAST(votos_apos_17h_brt AS BIGINT) AS votos_apos_17h_brt
-        FROM read_parquet('{parquet_glob}');
+            CAST(votos_apos_17h_brt AS BIGINT) AS votos_apos_17h_brt,
+            CAST(hora_fechamento_urna_brt AS VARCHAR) AS hora_fechamento_urna_brt
+        FROM raw_secoes;
         """
     )
 
@@ -60,7 +72,11 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
                 nr_zona,
                 nr_secao,
                 total_votos,
-                votos_apos_17h_brt
+                votos_apos_17h_brt,
+                CASE
+                    WHEN votos_apos_17h_brt > 0 THEN hora_fechamento_urna_brt
+                    ELSE NULL
+                END AS hora_fechamento_urna_brt
             FROM secoes
             WHERE sg_uf <> 'ZZ'
             ORDER BY sg_uf, cd_municipio_tse, nr_zona, nr_secao

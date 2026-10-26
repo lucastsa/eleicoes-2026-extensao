@@ -86,19 +86,46 @@ MUNICIPIO_BRT_OFFSET_OVERRIDE: dict[str, int] = {
 }
 
 
+def get_brt_offset_hours(sg_uf: str, cd_municipio_tse: str) -> int:
+    """
+    Retorna o offset em horas do relógio local do município/UF em relação ao Horário de Brasília (BRT).
+    Exemplo: -2 para o Acre (UTC-5), -1 para Manaus (UTC-4), +1 para Fernando de Noronha (UTC-2), 0 para BRT.
+    """
+    uf = sg_uf.upper()
+    if uf == "ZZ":
+        return 0
+    mun_pad = cd_municipio_tse.zfill(5)
+    return MUNICIPIO_BRT_OFFSET_OVERRIDE.get(mun_pad, UF_DEFAULT_BRT_OFFSET.get(uf, 0))
+
+
 def get_brt_cutoff_time_str(sg_uf: str, cd_municipio_tse: str) -> str:
     """
     Retorna a string de horário 'HH:MM:SS' equivalente às 17:00:00 (Horário de Brasília)
     no relógio local do município/UF.
     No Exterior (ZZ), o encerramento ocorre às 17:00:00 do horário local de cada seção.
     """
-    uf = sg_uf.upper()
-    if uf == "ZZ":
-        return "17:00:00"
-    mun_pad = cd_municipio_tse.zfill(5)
-    offset = MUNICIPIO_BRT_OFFSET_OVERRIDE.get(mun_pad, UF_DEFAULT_BRT_OFFSET.get(uf, 0))
+    offset = get_brt_offset_hours(sg_uf, cd_municipio_tse)
     cutoff_hour = 17 + offset
     return f"{cutoff_hour:02d}:00:00"
+
+
+def local_time_to_brt_str(hh_mm_ss: str, sg_uf: str, cd_municipio_tse: str) -> str:
+    """
+    Converte uma string 'HH:MM:SS' do horário local da urna para o Horário de Brasília (BRT).
+    Exemplo: '15:02:43' em AC (offset -2) -> '17:02:43' BRT.
+    """
+    if not hh_mm_ss or len(hh_mm_ss) < 8:
+        return hh_mm_ss
+    offset = get_brt_offset_hours(sg_uf, cd_municipio_tse)
+    if offset == 0:
+        return hh_mm_ss[:8]
+    try:
+        hh = int(hh_mm_ss[0:2])
+        rest = hh_mm_ss[2:8]
+        brt_hh = (hh - offset) % 24
+        return f"{brt_hh:02d}{rest}"
+    except ValueError:
+        return hh_mm_ss[:8]
 
 
 @dataclass(frozen=True)

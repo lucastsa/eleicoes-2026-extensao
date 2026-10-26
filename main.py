@@ -10,7 +10,7 @@ from rich.console import Console
 
 from src.aggregator import run_aggregations
 from src.config import ALL_UFS, PRESET_ELECTIONS, ElectionConfig
-from src.worker import process_uf
+from src.worker import enrich_uf_closing_times, process_uf
 
 console = Console()
 
@@ -67,6 +67,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Verifica seções ausentes nos Parquets já baixados frente ao cs.json atual e baixa apenas o delta.",
     )
     parser.add_argument(
+        "--enrich-closing-time",
+        action="store_true",
+        help="Re-consulta apenas as seções com votos >17h BRT para extrair a hora de fechamento da urna.",
+    )
+    parser.add_argument(
         "--aggregate-only",
         action="store_true",
         help="Executa apenas a etapa de agregação DuckDB sobre os checkpoints já baixados.",
@@ -99,16 +104,23 @@ async def async_main(args: argparse.Namespace) -> int:
     if not args.aggregate_only:
         for uf in ufs:
             try:
-                await process_uf(
-                    config=config,
-                    uf=uf,
-                    concurrency=args.concurrency,
-                    cpu_workers=args.workers,
-                    force_api=args.force_api,
-                    repair_missing=args.repair,
-                )
-                # Atualiza os arquivos agregados incrementalmente após cada UF concluída
-                run_aggregations(config)
+                if args.enrich_closing_time:
+                    await enrich_uf_closing_times(
+                        config=config,
+                        uf=uf,
+                        concurrency=args.concurrency,
+                    )
+                else:
+                    await process_uf(
+                        config=config,
+                        uf=uf,
+                        concurrency=args.concurrency,
+                        cpu_workers=args.workers,
+                        force_api=args.force_api,
+                        repair_missing=args.repair,
+                    )
+                    # Atualiza os arquivos agregados incrementalmente após cada UF concluída
+                    run_aggregations(config)
             except Exception as exc:
                 console.print(f"[bold red]Erro ao processar UF {uf}:[/] {exc}")
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import py7zr
 
-from src.config import UF_TO_REGIAO, get_brt_cutoff_time_str
+from src.config import UF_TO_REGIAO, get_brt_cutoff_time_str, local_time_to_brt_str
 
 # Padrão de nome de arquivo de urna:
 # 2026: o03221rr0312300070001-log.jez
@@ -24,6 +24,14 @@ FILENAME_RE = re.compile(
 
 # String exata gravada pelo aplicativo VOTA da urna eletrônica a cada eleitor que conclui o voto
 VOTE_COMPUTED_MARKER = b"O voto do eleitor foi computado"
+
+# Marcador principal de fechamento da urna (confirmação pelo presidente da seção) e fallbacks
+CLOSING_MARKERS: tuple[bytes, ...] = (
+    b"Procedimento de encerramento confirmado",
+    b"Inicio do Encerramento",
+    b"Gerando relat\xf3rio [BU]",
+    b"Gerando arquivo de resultado [bu.dat]",
+)
 
 # Verifica se o binário nativo `7z` ou `7zr` está disponível (opcional, para aceleração)
 SYSTEM_7Z_BIN = shutil.which("7z") or shutil.which("7za") or shutil.which("7zr")
@@ -40,6 +48,7 @@ class SectionVoteResult:
     total_votos: int
     votos_apos_17h_local: int
     votos_apos_17h_brt: int
+    hora_fechamento_urna_brt: str | None = None
 
 
 def parse_ids_from_filename(filename: str) -> tuple[str, str, str] | None:
@@ -179,6 +188,53 @@ def count_votes_in_logd(
     return total_votos, votos_apos_17h_local, votos_apos_17h_brt
 
 
+def extract_closing_time_in_logd(
+    logd_blobs: list[bytes],
+    election_date: str,
+    next_day_date: str,
+    sg_uf: str,
+    cd_municipio_tse: str,
+) -> str | None:
+    """
+    Extrai o horário de fechamento da urna ('Procedimento de encerramento confirmado',
+    com fallback para 'Inicio do Encerramento') no dia do pleito e converte para o
+    Horário de Brasília (BRT) no formato 'HH:MM:SS'.
+    """
+    date_prefix = election_date.encode("ascii") + b" "
+    next_date_prefix = next_day_date.encode("ascii") + b" "
+
+    for marker in CLOSING_MARKERS:
+        found_local_time: str | None = None
+        for blob in logd_blobs:
+            search_pos = 0
+            while True:
+                idx = blob.find(marker, search_pos)
+                if idx == -1:
+                    break
+                line_start = blob.rfind(b"\n", 0, idx)
+                line_start = 0 if line_start == -1 else line_start + 1
+                line_end = blob.find(b"\n", idx)
+                if line_end == -1:
+                    line_end = len(blob)
+
+                line = blob[line_start:line_end].rstrip(b"\r")
+                search_pos = line_end + 1
+
+                if line.startswith(date_prefix) and len(line) >= 19:
+                    hh_mm_ss = line[11:19]
+                    if hh_mm_ss >= b"12:00:00":
+                        found_local_time = hh_mm_ss.decode("ascii", errors="ignore")
+                elif line.startswith(next_date_prefix) and len(line) >= 19:
+                    hh_mm_ss = line[11:19]
+                    if hh_mm_ss < b"06:00:00":
+                        found_local_time = hh_mm_ss.decode("ascii", errors="ignore")
+
+        if found_local_time:
+            return local_time_to_brt_str(found_local_time, sg_uf, cd_municipio_tse)
+
+    return None
+
+
 def process_multiple_logjez_bytes(
     logjez_bytes_list: list[bytes],
     sg_uf: str,
@@ -209,6 +265,17 @@ def process_multiple_logjez_bytes(
         next_day_date=next_day_date,
         brt_cutoff_str=brt_cutoff_str,
     )
+    closing_brt = (
+        extract_closing_time_in_logd(
+            logd_blobs=all_blobs,
+            election_date=election_date,
+            next_day_date=next_day_date,
+            sg_uf=uf_up,
+            cd_municipio_tse=mun_pad,
+        )
+        if after_brt > 0
+        else None
+    )
 
     return SectionVoteResult(
         sg_uf=uf_up,
@@ -220,6 +287,7 @@ def process_multiple_logjez_bytes(
         total_votos=total,
         votos_apos_17h_local=after_local,
         votos_apos_17h_brt=after_brt,
+        hora_fechamento_urna_brt=closing_brt,
     )
 
 

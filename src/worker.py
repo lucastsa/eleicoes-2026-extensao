@@ -75,6 +75,7 @@ def append_results_to_partial_csv(partial_csv: Path, results: list[SectionVoteRe
             "total_votos",
             "votos_apos_17h_local",
             "votos_apos_17h_brt",
+            "hora_fechamento_urna_brt",
         ]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
@@ -91,6 +92,7 @@ def append_results_to_partial_csv(partial_csv: Path, results: list[SectionVoteRe
                     "total_votos": r.total_votos,
                     "votos_apos_17h_local": r.votos_apos_17h_local,
                     "votos_apos_17h_brt": r.votos_apos_17h_brt,
+                    "hora_fechamento_urna_brt": r.hora_fechamento_urna_brt or "",
                 }
             )
 
@@ -110,7 +112,8 @@ def finalize_uf_parquet(partial_csv: Path, final_parquet: Path) -> None:
                 LPAD(CAST(nr_secao AS VARCHAR), 4, '0') AS nr_secao,
                 CAST(total_votos AS BIGINT) AS total_votos,
                 CAST(votos_apos_17h_local AS BIGINT) AS votos_apos_17h_local,
-                CAST(votos_apos_17h_brt AS BIGINT) AS votos_apos_17h_brt
+                CAST(votos_apos_17h_brt AS BIGINT) AS votos_apos_17h_brt,
+                NULLIF(CAST(hora_fechamento_urna_brt AS VARCHAR), '') AS hora_fechamento_urna_brt
             FROM read_csv_auto('{partial_csv.as_posix()}', all_varchar=true)
             ORDER BY sg_uf, cd_municipio_tse, nr_zona, nr_secao
         ) TO '{final_parquet.as_posix()}' (FORMAT PARQUET, COMPRESSION ZSTD);
@@ -466,6 +469,20 @@ def merge_partial_csv_into_parquet(partial_csv: Path, final_parquet: Path) -> No
     if final_parquet.exists():
         con.execute(
             f"""
+            CREATE TABLE existing_pq AS
+            SELECT * FROM read_parquet('{final_parquet.as_posix()}');
+            ALTER TABLE existing_pq ADD COLUMN IF NOT EXISTS hora_fechamento_urna_brt VARCHAR;
+            """
+        )
+        con.execute(
+            f"""
+            CREATE TABLE incoming_csv AS
+            SELECT * FROM read_csv_auto('{partial_csv.as_posix()}', all_varchar=true);
+            ALTER TABLE incoming_csv ADD COLUMN IF NOT EXISTS hora_fechamento_urna_brt VARCHAR;
+            """
+        )
+        con.execute(
+            f"""
             COPY (
                 SELECT DISTINCT ON (sg_uf, cd_municipio_tse, nr_zona, nr_secao)
                     sg_uf,
@@ -476,23 +493,38 @@ def merge_partial_csv_into_parquet(partial_csv: Path, final_parquet: Path) -> No
                     LPAD(CAST(nr_secao AS VARCHAR), 4, '0') AS nr_secao,
                     CAST(total_votos AS BIGINT) AS total_votos,
                     CAST(votos_apos_17h_local AS BIGINT) AS votos_apos_17h_local,
-                    CAST(votos_apos_17h_brt AS BIGINT) AS votos_apos_17h_brt
+                    CAST(votos_apos_17h_brt AS BIGINT) AS votos_apos_17h_brt,
+                    hora_fechamento_urna_brt
                 FROM (
-                    SELECT * FROM read_parquet('{final_parquet.as_posix()}')
+                    SELECT
+                        sg_uf,
+                        nm_regiao,
+                        cd_municipio_tse,
+                        nm_municipio,
+                        nr_zona,
+                        nr_secao,
+                        total_votos,
+                        votos_apos_17h_local,
+                        votos_apos_17h_brt,
+                        NULLIF(CAST(hora_fechamento_urna_brt AS VARCHAR), '') AS hora_fechamento_urna_brt,
+                        1 AS priority
+                    FROM incoming_csv
                     UNION ALL
                     SELECT
                         sg_uf,
                         nm_regiao,
-                        LPAD(CAST(cd_municipio_tse AS VARCHAR), 5, '0') AS cd_municipio_tse,
+                        cd_municipio_tse,
                         nm_municipio,
-                        LPAD(CAST(nr_zona AS VARCHAR), 4, '0') AS nr_zona,
-                        LPAD(CAST(nr_secao AS VARCHAR), 4, '0') AS nr_secao,
-                        CAST(total_votos AS BIGINT) AS total_votos,
-                        CAST(votos_apos_17h_local AS BIGINT) AS votos_apos_17h_local,
-                        CAST(votos_apos_17h_brt AS BIGINT) AS votos_apos_17h_brt
-                    FROM read_csv_auto('{partial_csv.as_posix()}', all_varchar=true)
+                        nr_zona,
+                        nr_secao,
+                        total_votos,
+                        votos_apos_17h_local,
+                        votos_apos_17h_brt,
+                        NULLIF(CAST(hora_fechamento_urna_brt AS VARCHAR), '') AS hora_fechamento_urna_brt,
+                        2 AS priority
+                    FROM existing_pq
                 )
-                ORDER BY sg_uf, cd_municipio_tse, nr_zona, nr_secao, total_votos DESC
+                ORDER BY sg_uf, cd_municipio_tse, nr_zona, nr_secao, priority ASC, total_votos DESC
             ) TO '{tmp_merged.as_posix()}' (FORMAT PARQUET, COMPRESSION ZSTD);
             """
         )
@@ -502,6 +534,93 @@ def merge_partial_csv_into_parquet(partial_csv: Path, final_parquet: Path) -> No
     else:
         con.close()
         finalize_uf_parquet(partial_csv, final_parquet)
+
+
+async def enrich_uf_closing_times(
+    config: ElectionConfig,
+    uf: str,
+    concurrency: int = 64,
+) -> Path:
+    """
+    Re-consulta apenas as seções de uma UF que tiveram votos após as 17h BRT (`votos_apos_17h_brt > 0`)
+    e cujo campo `hora_fechamento_urna_brt` ainda não foi preenchido no Parquet da UF.
+    """
+    uf_up = uf.upper()
+    final_parquet = get_uf_checkpoint_parquet(config, uf_up)
+    if not final_parquet.exists():
+        console.print(f"[yellow]Parquet {final_parquet.name} não encontrado para {uf_up}.[/]")
+        return final_parquet
+
+    con = duckdb.connect(":memory:")
+    con.execute(
+        f"""
+        CREATE TABLE pq_sec AS
+        SELECT * FROM read_parquet('{final_parquet.as_posix()}');
+        ALTER TABLE pq_sec ADD COLUMN IF NOT EXISTS hora_fechamento_urna_brt VARCHAR;
+        """
+    )
+    rows = con.execute(
+        """
+        SELECT sg_uf, cd_municipio_tse, nm_municipio, nr_zona, nr_secao
+        FROM pq_sec
+        WHERE votos_apos_17h_brt > 0
+          AND (hora_fechamento_urna_brt IS NULL OR hora_fechamento_urna_brt = '')
+        ORDER BY cd_municipio_tse, nr_zona, nr_secao
+        """
+    ).fetchall()
+    con.close()
+
+    if not rows:
+        console.print(
+            f"[dim]✔ UF {uf_up}: todas as seções com votos >17h BRT já possuem hora de fechamento.[/]"
+        )
+        return final_parquet
+
+    target_sections = [
+        SectionMeta(
+            sg_uf=str(r[0]),
+            cd_municipio_tse=str(r[1]).zfill(5),
+            nm_municipio=str(r[2]),
+            nr_zona=str(r[3]).zfill(4),
+            nr_secao=str(r[4]).zfill(4),
+        )
+        for r in rows
+    ]
+
+    partial_csv = get_uf_partial_csv(config, uf_up)
+    p_tag = f"p{config.pleito_pad6}"
+
+    limits = httpx.Limits(
+        max_connections=concurrency + 16,
+        max_keepalive_connections=concurrency,
+        keepalive_expiry=20.0,
+    )
+    timeout = httpx.Timeout(connect=10.0, read=25.0, write=10.0, pool=15.0)
+    async with httpx.AsyncClient(
+        headers=DEFAULT_HEADERS,
+        http2=False,
+        limits=limits,
+        timeout=timeout,
+    ) as client:
+        console.print(
+            f"[bold cyan][Fechamento {uf_up}][/] Re-consultando {len(target_sections):,} seções com votos >17h BRT..."
+        )
+        await process_uf_via_api(
+            client=client,
+            config=config,
+            uf=uf_up,
+            sections=target_sections,
+            p_tag=p_tag,
+            partial_csv=partial_csv,
+            concurrency=concurrency,
+        )
+
+    if partial_csv.exists():
+        merge_partial_csv_into_parquet(partial_csv, final_parquet)
+        console.print(
+            f"[bold green]✔ Fechamento {uf_up} atualizado:[/] {len(target_sections):,} seções enriquecidas."
+        )
+    return final_parquet
 
 
 async def process_uf(

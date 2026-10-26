@@ -67,7 +67,29 @@ A coleta e análise integral dos arquivos de log de urna (`-log.jez` / `logd.dat
 
 ---
 
-## 4. Conclusão Analítica: Os Votos Após as 17h BRT Poderiam Alterar o Resultado da Eleição?
+## 4. Análise do Horário de Fechamento das Urnas com Votos Após as 17h BRT (`hora_fechamento_urna_brt`)
+
+Todas as **29.885 seções** que registraram votos após as 17h BRT foram re-consultadas para extrair do `logd.dat` o marco oficial **`"Procedimento de encerramento confirmado"`** (instante em que o presidente da mesa confirma o encerramento da votação na urna), convertido para o **Horário de Brasília (BRT)** e gravado na coluna `hora_fechamento_urna_brt` dos arquivos [`data/output/votos_apos_17h_secao.csv`](data/output/votos_apos_17h_secao.csv) e [`data/output/votos_apos_17h_secao.parquet`](data/output/votos_apos_17h_secao.parquet).
+
+### Distribuição por Faixa de Horário de Fechamento (BRT)
+
+| Faixa de Fechamento (BRT) | Urnas / Seções | % das Urnas (>17h BRT) | Votos >17h BRT | % dos Votos (>17h BRT) | Perfil Operacional Predominante |
+| :--- | ---: | ---: | ---: | ---: | :--- |
+| **`17:00:00` a `17:04:59`** (até 5 min) | 19.047 | 63,73% | 20.333 | 58,94% | Último eleitor já na cabine às 16h59 concluindo o voto |
+| **`17:05:00` a `17:14:59`** (5 a 15 min) | 7.123 | 23,83% | 8.375 | 24,28% | Escoamento imediato de últimos eleitores na porta da seção |
+| **`17:15:00` a `17:29:59`** (15 a 30 min) | 284 | 0,95% | 483 | 1,40% | Pequenas filas residuais com senha |
+| **`17:30:00` a `17:59:59`** (30 a 60 min) | 116 | 0,39% | 207 | 0,60% | Filas residuais moderadas ou contingências pontuais |
+| **`18:00:00` a `18:59:59`** (1h a 2h após) | 302 | 1,01% | 605 | 1,75% | Seções encerradas durante a janela de extensão |
+| **`19:00:00` ou mais** (2h+ após 17h BRT) | 3.013 | 10,08% | 4.492 | 13,02% | Seções que permaneceram abertas até o teto da prorrogação (19h BRT) |
+| **TOTAL (Seções com votos >17h BRT)** | **29.885** | **100,00%** | **34.495** | **100,00%** | — |
+
+**Principais conclusões sobre o horário de fechamento:**
+- **87,57% dessas urnas (`26.170` seções)** foram encerradas nos **primeiros 15 minutos** após as 17h BRT (`17:00:00` a `17:14:59` BRT), concentrando **83,22% (`28.708` votos)** de todos os votos pós-17h.
+- Há um segundo pico bem definido a partir das **`19:00:00` BRT**: exatamente **3.013 dessas urnas (10,08%)** encerraram a votação após as 19h00 BRT — refletindo as seções que receberam a comunicação da liminar de prorrogação de 2 horas antes do encerramento às 17h e aguardaram até as 19h BRT para fechar (concentradas sobretudo em **RJ** [`1.280` urnas], **SP** [`885`], **BA** [`493`], **PE** [`230`] e **PB** [`90`]). Nelas foram registrados **4.492 votos** após as 17h BRT (média de **1,49 voto por urna** ao longo das duas horas adicionais).
+
+---
+
+## 5. Conclusão Analítica: Os Votos Após as 17h BRT Poderiam Alterar o Resultado da Eleição?
 
 **Não. Mesmo sob a hipótese mais extrema possível, os votos computados após as 17h BRT não teriam qualquer capacidade de alterar o resultado final da eleição.**
 
