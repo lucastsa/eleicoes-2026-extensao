@@ -62,6 +62,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Força o download individual de .logjez em memória via API resultados.tse.jus.br.",
     )
     parser.add_argument(
+        "--repair",
+        action="store_true",
+        help="Verifica seções ausentes nos Parquets já baixados frente ao cs.json atual e baixa apenas o delta.",
+    )
+    parser.add_argument(
         "--aggregate-only",
         action="store_true",
         help="Executa apenas a etapa de agregação DuckDB sobre os checkpoints já baixados.",
@@ -100,6 +105,7 @@ async def async_main(args: argparse.Namespace) -> int:
                     concurrency=args.concurrency,
                     cpu_workers=args.workers,
                     force_api=args.force_api,
+                    repair_missing=args.repair,
                 )
                 # Atualiza os arquivos agregados incrementalmente após cada UF concluída
                 run_aggregations(config)

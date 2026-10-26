@@ -23,7 +23,12 @@ from rich.progress import (
 
 from src.config import CHECKPOINT_DIR, TMP_DIR, UF_TO_REGIAO, ElectionConfig
 from src.metadata import SectionMeta, fetch_uf_sections_and_municipios
-from src.parser import SectionVoteResult, parse_ids_from_filename, process_logjez_bytes
+from src.parser import (
+    SectionVoteResult,
+    parse_ids_from_filename,
+    process_logjez_bytes,
+    process_multiple_logjez_bytes,
+)
 
 console = Console()
 
@@ -281,57 +286,57 @@ async def fetch_and_process_single_section_api(
                 if not hashes:
                     return None
 
-                # Procura o hash e o nome exato do arquivo -log.jez / .logjez listado no aux.json
-                sec_hash = None
-                logjez_fname = None
+                # Coleta TODOS os pares (hash, nome_arquivo_log) listados em hashes[]
+                # (cobre seções com substituição de urna que possuem mais de um pacote de log)
+                log_targets: list[tuple[str, str]] = []
                 for h_entry in hashes:
                     h_val = h_entry.get("hash")
+                    if not h_val:
+                        continue
+                    found_in_entry = False
                     # Formato 2026: "arq": [{"nm": "o03221rr0312300070001-log.jez", "tp": "log"}, ...]
                     for arq_obj in h_entry.get("arq", []):
                         nm = arq_obj.get("nm", "") if isinstance(arq_obj, dict) else str(arq_obj)
                         tp = arq_obj.get("tp", "") if isinstance(arq_obj, dict) else ""
                         if tp == "log" or nm.lower().endswith((".logjez", ".jez")):
-                            sec_hash = h_val
-                            logjez_fname = nm
-                            break
-                    if sec_hash and logjez_fname:
-                        break
+                            log_targets.append((h_val, nm))
+                            found_in_entry = True
                     # Formato 2022: "nmarq": ["o00407-0312300070001.logjez", ...]
-                    for fname in h_entry.get("nmarq", []):
-                        if fname.lower().endswith((".logjez", ".jez")):
-                            sec_hash = h_val
-                            logjez_fname = fname
-                            break
-                    if sec_hash and logjez_fname:
-                        break
+                    if not found_in_entry:
+                        for fname in h_entry.get("nmarq", []):
+                            if fname.lower().endswith((".logjez", ".jez")):
+                                log_targets.append((h_val, fname))
+                                found_in_entry = True
 
-                if not sec_hash:
-                    sec_hash = hashes[0].get("hash")
-                    logjez_fname = f"o{config.pleito_pad5}{uf_low}{m}{z}{s}-log.jez"
+                if not log_targets:
+                    first_hash = hashes[0].get("hash")
+                    if not first_hash:
+                        return None
+                    log_targets.append((first_hash, f"o{config.pleito_pad5}{uf_low}{m}{z}{s}-log.jez"))
 
-                if not sec_hash:
+                raw_bytes_list: list[bytes] = []
+                for sec_hash, logjez_fname in log_targets:
+                    log_url = config.section_logjez_url(
+                        uf=sec.sg_uf,
+                        cd_municipio=m,
+                        nr_zona=z,
+                        nr_secao=s,
+                        sec_hash=sec_hash,
+                        filename=logjez_fname,
+                    )
+                    log_resp = await client.get(log_url)
+                    if log_resp.status_code == 404:
+                        continue
+                    log_resp.raise_for_status()
+                    if log_resp.content:
+                        raw_bytes_list.append(log_resp.content)
+
+                if not raw_bytes_list:
                     return None
 
-                log_url = config.section_logjez_url(
-                    uf=sec.sg_uf,
-                    cd_municipio=m,
-                    nr_zona=z,
-                    nr_secao=s,
-                    sec_hash=sec_hash,
-                    filename=logjez_fname,
-                )
-
-                log_resp = await client.get(log_url)
-                if log_resp.status_code == 404:
-                    return None
-                log_resp.raise_for_status()
-                raw_bytes = log_resp.content
-
-                # Se for ZIP em memória (PK\x03\x04, padrão 2026), processa direto (~0.5ms);
-                # se for 7z, usa thread separada.
-                if raw_bytes[:4] == b"PK\x03\x04":
-                    return process_logjez_bytes(
-                        raw_bytes,
+                if all(b[:4] == b"PK\x03\x04" for b in raw_bytes_list):
+                    return process_multiple_logjez_bytes(
+                        raw_bytes_list,
                         sec.sg_uf,
                         m,
                         sec.nm_municipio,
@@ -341,8 +346,8 @@ async def fetch_and_process_single_section_api(
                         config.next_day_date,
                     )
                 return await asyncio.to_thread(
-                    process_logjez_bytes,
-                    raw_bytes,
+                    process_multiple_logjez_bytes,
+                    raw_bytes_list,
                     sec.sg_uf,
                     m,
                     sec.nm_municipio,
@@ -436,22 +441,86 @@ async def process_uf_via_api(
         buffer.clear()
 
 
+def load_parquet_section_keys(parquet_path: Path) -> set[tuple[str, str, str]]:
+    """Retorna o conjunto de chaves (cd_municipio_tse, nr_zona, nr_secao) já salvas no Parquet da UF."""
+    if not parquet_path.exists():
+        return set()
+    con = duckdb.connect(":memory:")
+    rows = con.execute(
+        f"""
+        SELECT cd_municipio_tse, nr_zona, nr_secao
+        FROM read_parquet('{parquet_path.as_posix()}')
+        WHERE total_votos > 0
+        """
+    ).fetchall()
+    con.close()
+    return {(str(r[0]).zfill(5), str(r[1]).zfill(4), str(r[2]).zfill(4)) for r in rows}
+
+
+def merge_partial_csv_into_parquet(partial_csv: Path, final_parquet: Path) -> None:
+    """Mescla novas seções recuperadas no CSV parcial com o Parquet existente da UF."""
+    if not partial_csv.exists():
+        return
+    tmp_merged = final_parquet.with_suffix(".merged.parquet")
+    con = duckdb.connect(":memory:")
+    if final_parquet.exists():
+        con.execute(
+            f"""
+            COPY (
+                SELECT DISTINCT ON (sg_uf, cd_municipio_tse, nr_zona, nr_secao)
+                    sg_uf,
+                    nm_regiao,
+                    LPAD(CAST(cd_municipio_tse AS VARCHAR), 5, '0') AS cd_municipio_tse,
+                    nm_municipio,
+                    LPAD(CAST(nr_zona AS VARCHAR), 4, '0') AS nr_zona,
+                    LPAD(CAST(nr_secao AS VARCHAR), 4, '0') AS nr_secao,
+                    CAST(total_votos AS BIGINT) AS total_votos,
+                    CAST(votos_apos_17h_local AS BIGINT) AS votos_apos_17h_local,
+                    CAST(votos_apos_17h_brt AS BIGINT) AS votos_apos_17h_brt
+                FROM (
+                    SELECT * FROM read_parquet('{final_parquet.as_posix()}')
+                    UNION ALL
+                    SELECT
+                        sg_uf,
+                        nm_regiao,
+                        LPAD(CAST(cd_municipio_tse AS VARCHAR), 5, '0') AS cd_municipio_tse,
+                        nm_municipio,
+                        LPAD(CAST(nr_zona AS VARCHAR), 4, '0') AS nr_zona,
+                        LPAD(CAST(nr_secao AS VARCHAR), 4, '0') AS nr_secao,
+                        CAST(total_votos AS BIGINT) AS total_votos,
+                        CAST(votos_apos_17h_local AS BIGINT) AS votos_apos_17h_local,
+                        CAST(votos_apos_17h_brt AS BIGINT) AS votos_apos_17h_brt
+                    FROM read_csv_auto('{partial_csv.as_posix()}', all_varchar=true)
+                )
+                ORDER BY sg_uf, cd_municipio_tse, nr_zona, nr_secao, total_votos DESC
+            ) TO '{tmp_merged.as_posix()}' (FORMAT PARQUET, COMPRESSION ZSTD);
+            """
+        )
+        con.close()
+        tmp_merged.replace(final_parquet)
+        partial_csv.unlink(missing_ok=True)
+    else:
+        con.close()
+        finalize_uf_parquet(partial_csv, final_parquet)
+
+
 async def process_uf(
     config: ElectionConfig,
     uf: str,
     concurrency: int = 48,
     cpu_workers: int = 4,
     force_api: bool = False,
+    repair_missing: bool = False,
 ) -> Path:
     """
     Orquestra o processamento completo de uma UF:
-    1. Se o Parquet final da UF já existir, pula imediatamente.
-    2. Tenta usar o ZIP consolidado do CDN (excluindo-o imediatamente após extrair em RAM).
-    3. Caso o ZIP do CDN não esteja disponível (ex: noite da eleição), processa via API em memória.
+    1. Se o Parquet final da UF já existir e `repair_missing=False`, pula imediatamente.
+    2. Se `repair_missing=True`, compara o catálogo cs.json atual com o Parquet da UF e baixa apenas o delta.
+    3. Caso contrário, processa a UF completa via CDN ou API em memória.
     """
     uf_up = uf.upper()
     final_parquet = get_uf_checkpoint_parquet(config, uf_up)
-    if final_parquet.exists():
+    if final_parquet.exists() and not repair_missing:
         console.print(f"[dim]✔ UF {uf_up} já processada em {final_parquet.name}. Pulando...[/]")
         return final_parquet
 
@@ -475,11 +544,41 @@ async def process_uf(
 
         try:
             sections, mun_map, p_tag = await fetch_uf_sections_and_municipios(client, config, uf_up)
-            console.print(
-                f"[cyan]Catálogo {uf_up}:[/] {len(sections):,} seções em {len(mun_map):,} municípios."
-            )
         except Exception as exc:
             console.print(f"[yellow]Aviso ao buscar catálogo cs.json de {uf_up}: {exc}[/]")
+
+        if final_parquet.exists() and repair_missing:
+            existing_keys = load_parquet_section_keys(final_parquet)
+            missing_sections = [
+                sec for sec in sections
+                if (sec.cd_municipio_tse, sec.nr_zona, sec.nr_secao) not in existing_keys
+            ]
+            if not missing_sections:
+                console.print(f"[dim]✔ UF {uf_up}: 0 seções ausentes (100% completo).[/]")
+                return final_parquet
+
+            console.print(
+                f"[bold yellow][Delta {uf_up}][/] {len(missing_sections):,} seções ausentes/pendentes "
+                f"(de {len(sections):,} no catálogo). Buscando complemento..."
+            )
+            await process_uf_via_api(
+                client=client,
+                config=config,
+                uf=uf_up,
+                sections=missing_sections,
+                p_tag=p_tag,
+                partial_csv=partial_csv,
+                concurrency=concurrency,
+            )
+            if partial_csv.exists():
+                before_cnt = len(existing_keys)
+                merge_partial_csv_into_parquet(partial_csv, final_parquet)
+                after_cnt = len(load_parquet_section_keys(final_parquet))
+                console.print(
+                    f"[bold green]✔ Delta {uf_up} mesclado:[/] +{after_cnt - before_cnt:,} seções recuperadas "
+                    f"(total agora: {after_cnt:,})."
+                )
+            return final_parquet
 
         cdn_url = config.cdn_zip_url(uf_up)
         cdn_size = None if force_api else await check_cdn_zip_available(client, cdn_url)

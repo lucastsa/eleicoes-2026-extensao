@@ -60,9 +60,9 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
                 nr_zona,
                 nr_secao,
                 total_votos,
-                votos_apos_17h_local,
                 votos_apos_17h_brt
             FROM secoes
+            WHERE sg_uf <> 'ZZ'
             ORDER BY sg_uf, cd_municipio_tse, nr_zona, nr_secao
         """,
         "municipio": """
@@ -72,16 +72,13 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
                 cd_municipio_tse,
                 nm_municipio,
                 COUNT(*) AS total_urnas_secoes,
-                SUM(CASE WHEN votos_apos_17h_local > 0 THEN 1 ELSE 0 END) AS urnas_secoes_apos_17h_local,
-                ROUND(100.0 * SUM(CASE WHEN votos_apos_17h_local > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 4) AS pct_urnas_secoes_apos_17h_local,
                 SUM(CASE WHEN votos_apos_17h_brt > 0 THEN 1 ELSE 0 END) AS urnas_secoes_apos_17h_brt,
                 ROUND(100.0 * SUM(CASE WHEN votos_apos_17h_brt > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 4) AS pct_urnas_secoes_apos_17h_brt,
                 SUM(total_votos) AS total_votos,
-                SUM(votos_apos_17h_local) AS votos_apos_17h_local,
                 SUM(votos_apos_17h_brt) AS votos_apos_17h_brt,
-                ROUND(100.0 * SUM(votos_apos_17h_local) / NULLIF(SUM(total_votos), 0), 4) AS pct_votos_apos_17h_local,
                 ROUND(100.0 * SUM(votos_apos_17h_brt) / NULLIF(SUM(total_votos), 0), 4) AS pct_votos_apos_17h_brt
             FROM secoes
+            WHERE sg_uf <> 'ZZ'
             GROUP BY sg_uf, nm_regiao, cd_municipio_tse, nm_municipio
             ORDER BY sg_uf, nm_municipio
         """,
@@ -91,16 +88,13 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
                 nm_regiao,
                 COUNT(DISTINCT cd_municipio_tse) AS total_municipios,
                 COUNT(*) AS total_urnas_secoes,
-                SUM(CASE WHEN votos_apos_17h_local > 0 THEN 1 ELSE 0 END) AS urnas_secoes_apos_17h_local,
-                ROUND(100.0 * SUM(CASE WHEN votos_apos_17h_local > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 4) AS pct_urnas_secoes_apos_17h_local,
                 SUM(CASE WHEN votos_apos_17h_brt > 0 THEN 1 ELSE 0 END) AS urnas_secoes_apos_17h_brt,
                 ROUND(100.0 * SUM(CASE WHEN votos_apos_17h_brt > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 4) AS pct_urnas_secoes_apos_17h_brt,
                 SUM(total_votos) AS total_votos,
-                SUM(votos_apos_17h_local) AS votos_apos_17h_local,
                 SUM(votos_apos_17h_brt) AS votos_apos_17h_brt,
-                ROUND(100.0 * SUM(votos_apos_17h_local) / NULLIF(SUM(total_votos), 0), 4) AS pct_votos_apos_17h_local,
                 ROUND(100.0 * SUM(votos_apos_17h_brt) / NULLIF(SUM(total_votos), 0), 4) AS pct_votos_apos_17h_brt
             FROM secoes
+            WHERE sg_uf <> 'ZZ'
             GROUP BY sg_uf, nm_regiao
             ORDER BY sg_uf
         """,
@@ -110,16 +104,13 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
                 COUNT(DISTINCT sg_uf) AS total_ufs,
                 COUNT(DISTINCT cd_municipio_tse) AS total_municipios,
                 COUNT(*) AS total_urnas_secoes,
-                SUM(CASE WHEN votos_apos_17h_local > 0 THEN 1 ELSE 0 END) AS urnas_secoes_apos_17h_local,
-                ROUND(100.0 * SUM(CASE WHEN votos_apos_17h_local > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 4) AS pct_urnas_secoes_apos_17h_local,
                 SUM(CASE WHEN votos_apos_17h_brt > 0 THEN 1 ELSE 0 END) AS urnas_secoes_apos_17h_brt,
                 ROUND(100.0 * SUM(CASE WHEN votos_apos_17h_brt > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 4) AS pct_urnas_secoes_apos_17h_brt,
                 SUM(total_votos) AS total_votos,
-                SUM(votos_apos_17h_local) AS votos_apos_17h_local,
                 SUM(votos_apos_17h_brt) AS votos_apos_17h_brt,
-                ROUND(100.0 * SUM(votos_apos_17h_local) / NULLIF(SUM(total_votos), 0), 4) AS pct_votos_apos_17h_local,
                 ROUND(100.0 * SUM(votos_apos_17h_brt) / NULLIF(SUM(total_votos), 0), 4) AS pct_votos_apos_17h_brt
             FROM secoes
+            WHERE sg_uf <> 'ZZ'
             GROUP BY nm_regiao
             ORDER BY nm_regiao
         """,
@@ -129,16 +120,13 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
                 COUNT(DISTINCT sg_uf) AS total_ufs,
                 COUNT(DISTINCT cd_municipio_tse) AS total_municipios,
                 COUNT(*) AS total_urnas_secoes,
-                SUM(CASE WHEN votos_apos_17h_local > 0 THEN 1 ELSE 0 END) AS urnas_secoes_apos_17h_local,
-                ROUND(100.0 * SUM(CASE WHEN votos_apos_17h_local > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 4) AS pct_urnas_secoes_apos_17h_local,
                 SUM(CASE WHEN votos_apos_17h_brt > 0 THEN 1 ELSE 0 END) AS urnas_secoes_apos_17h_brt,
                 ROUND(100.0 * SUM(CASE WHEN votos_apos_17h_brt > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 4) AS pct_urnas_secoes_apos_17h_brt,
                 SUM(total_votos) AS total_votos,
-                SUM(votos_apos_17h_local) AS votos_apos_17h_local,
                 SUM(votos_apos_17h_brt) AS votos_apos_17h_brt,
-                ROUND(100.0 * SUM(votos_apos_17h_local) / NULLIF(SUM(total_votos), 0), 4) AS pct_votos_apos_17h_local,
                 ROUND(100.0 * SUM(votos_apos_17h_brt) / NULLIF(SUM(total_votos), 0), 4) AS pct_votos_apos_17h_brt
             FROM secoes
+            WHERE sg_uf <> 'ZZ'
         """,
     }
 
@@ -150,19 +138,18 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
         outputs[f"{level}_csv"] = csv_path
         outputs[f"{level}_parquet"] = pq_path
 
-    # Exibe tabela resumo por Região e Total Brasil no terminal
+    # Exibe tabela resumo por Região e Total Brasil no terminal (apenas 17h BRT, sem ZZ)
     regiao_rows = con.execute(queries["regiao"]).fetchall()
     br_row = con.execute(queries["brasil"]).fetchone()
     con.close()
 
-    table = Table(title=f"Resumo de Votos e Urnas/Seções Após as 17h ({config.year} - {config.turn}º Turno)")
+    table = Table(title=f"Resumo de Votos e Urnas/Seções Após as 17h BRT ({config.year} - {config.turn}º Turno)")
     table.add_column("Região / Escopo", style="bold cyan")
     table.add_column("Urnas/Seções", justify="right")
-    table.add_column("Urnas >17h (Local)", justify="right", style="yellow")
-    table.add_column("Urnas >17h (BRT)", justify="right", style="green")
+    table.add_column("Urnas >17h BRT", justify="right", style="green")
+    table.add_column("% Urnas", justify="right")
     table.add_column("Total Votos", justify="right")
-    table.add_column("Votos >17h (Local)", justify="right", style="yellow")
-    table.add_column("Votos >17h (BRT)", justify="right", style="green")
+    table.add_column("Votos >17h BRT", justify="right", style="green")
     table.add_column("% Votos BRT", justify="right")
 
     for r in regiao_rows:
@@ -171,25 +158,20 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
             _,
             _,
             tot_sec,
-            sec_loc,
-            pct_sec_loc,
             sec_brt,
             pct_sec_brt,
             tot_v,
-            v_loc,
             v_brt,
-            pct_loc,
             pct_brt,
         ) = r
         table.add_row(
             str(nm_reg),
             f"{tot_sec or 0:,}",
-            f"{sec_loc or 0:,} ({pct_sec_loc or 0.0:.2f}%)",
-            f"{sec_brt or 0:,} ({pct_sec_brt or 0.0:.2f}%)",
+            f"{sec_brt or 0:,}",
+            f"{pct_sec_brt or 0.0:.2f}%",
             f"{tot_v or 0:,}",
-            f"{v_loc or 0:,}",
             f"{v_brt or 0:,}",
-            f"{pct_brt or 0.0:.2f}%",
+            f"{pct_brt or 0.0:.4f}%",
         )
 
     if br_row:
@@ -198,26 +180,21 @@ def run_aggregations(config: ElectionConfig) -> dict[str, Path]:
             _,
             _,
             tot_sec,
-            sec_loc,
-            pct_sec_loc,
             sec_brt,
             pct_sec_brt,
             tot_v,
-            v_loc,
             v_brt,
-            pct_loc,
             pct_brt,
         ) = br_row
         table.add_section()
         table.add_row(
             "TOTAL BRASIL",
             f"{tot_sec or 0:,}",
-            f"{sec_loc or 0:,} ({pct_sec_loc or 0.0:.2f}%)",
-            f"{sec_brt or 0:,} ({pct_sec_brt or 0.0:.2f}%)",
+            f"{sec_brt or 0:,}",
+            f"{pct_sec_brt or 0.0:.2f}%",
             f"{tot_v or 0:,}",
-            f"{v_loc or 0:,}",
             f"{v_brt or 0:,}",
-            f"{pct_brt or 0.0:.2f}%",
+            f"{pct_brt or 0.0:.4f}%",
             style="bold magenta",
         )
 

@@ -179,8 +179,8 @@ def count_votes_in_logd(
     return total_votos, votos_apos_17h_local, votos_apos_17h_brt
 
 
-def process_logjez_bytes(
-    logjez_bytes: bytes,
+def process_multiple_logjez_bytes(
+    logjez_bytes_list: list[bytes],
     sg_uf: str,
     cd_municipio_tse: str,
     nm_municipio: str,
@@ -190,7 +190,8 @@ def process_logjez_bytes(
     next_day_date: str,
 ) -> SectionVoteResult:
     """
-    Processa os bytes de um único arquivo .logjez em memória e retorna a contagem da seção.
+    Processa os bytes de um ou mais arquivos .logjez (caso a seção tenha múltiplos hashes
+    no aux.json por substituição de urna) em memória e retorna a contagem deduplicada da seção.
     """
     uf_up = sg_uf.upper()
     mun_pad = cd_municipio_tse.zfill(5)
@@ -198,9 +199,12 @@ def process_logjez_bytes(
     secao_pad = nr_secao.zfill(4)
 
     brt_cutoff_str = get_brt_cutoff_time_str(uf_up, mun_pad)
-    logd_blobs = extract_logd_bytes_in_memory(logjez_bytes)
+    all_blobs: list[bytes] = []
+    for raw_b in logjez_bytes_list:
+        all_blobs.extend(extract_logd_bytes_in_memory(raw_b))
+
     total, after_local, after_brt = count_votes_in_logd(
-        logd_blobs=logd_blobs,
+        logd_blobs=all_blobs,
         election_date=election_date,
         next_day_date=next_day_date,
         brt_cutoff_str=brt_cutoff_str,
@@ -216,4 +220,29 @@ def process_logjez_bytes(
         total_votos=total,
         votos_apos_17h_local=after_local,
         votos_apos_17h_brt=after_brt,
+    )
+
+
+def process_logjez_bytes(
+    logjez_bytes: bytes,
+    sg_uf: str,
+    cd_municipio_tse: str,
+    nm_municipio: str,
+    nr_zona: str,
+    nr_secao: str,
+    election_date: str,
+    next_day_date: str,
+) -> SectionVoteResult:
+    """
+    Processa os bytes de um único arquivo .logjez em memória e retorna a contagem da seção.
+    """
+    return process_multiple_logjez_bytes(
+        logjez_bytes_list=[logjez_bytes],
+        sg_uf=sg_uf,
+        cd_municipio_tse=cd_municipio_tse,
+        nm_municipio=nm_municipio,
+        nr_zona=nr_zona,
+        nr_secao=nr_secao,
+        election_date=election_date,
+        next_day_date=next_day_date,
     )
